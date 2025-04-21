@@ -9,6 +9,10 @@ import { loggingHandler } from './middleware/loggingHandler.js';
 import { routeNotFound } from './middleware/routeNotFound.js';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
+import http from 'http';
+import { Server } from 'socket.io';
+//const cors =require("cors");
+
 
 dotenv.config(); // Cargamos las variables de entorno desde el archivo .env
 
@@ -56,6 +60,38 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(express.json());
 app.use(loggingHandler);
 app.use(corsHandler);
+// Initialize Socket.IO with the HTTP server
+const SOCKET_PORT = process.env.SOCKET_PORT || 9001;
+
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+    cors: {
+        origin: "http://localhost:8081", // Permitir solicitudes desde este origen
+        methods: ["GET", "POST"], // Métodos permitidos
+    },
+});
+
+io.on('connection', (socket) => {
+    console.log('Usuario conectado:', socket.id);
+
+    // Escucha mensajes del cliente
+    socket.on('send message', (data) => {
+        console.log('Mensaje recibido del cliente:', data);
+
+        // Reenvía el mensaje a todos los clientes conectados
+        io.emit('receive message', data);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Usuario desconectado:', socket.id);
+    });
+});
+
+// Inicia el servidor de Socket.IO
+httpServer.listen(SOCKET_PORT, () => {
+    console.log(`Socket.IO escuchando en http://localhost:${SOCKET_PORT}`);
+});
+
 //rutas
 app.use('/api', userRoutes);
 app.use('/api', forumRoutes);
@@ -64,6 +100,9 @@ app.use('/api', subjectRoutes);
 // Rutes de prova
 app.get('/', (req, res) => {
     res.send('Welcome to my API');
+    httpServer.listen(LOCAL_PORT, () => {
+    console.log('Server by socket.io: ' + LOCAL_PORT);
+    });
 });
 
 // Conexión a MongoDB

@@ -1,5 +1,6 @@
+//import { MESSAGE } from './../../../node_modules/mongodb/src/constants';
 // src/controllers/user_controller.ts
-import { saveMethod, createUser, getAllUsers, getUserById, updateUser, deleteUser } from '../users/user_service.js';
+import { saveMethod, createUser, getAllUsers, getUserById, updateUser, deleteUser, loginUser } from '../users/user_service.js';
 
 import express, { Request, Response } from 'express';
 
@@ -51,3 +52,14 @@ export const deleteUserHandler = async (req: Request, res: Response) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+export const login = async (req: Request, res: Response) => {
+    try {
+        const email = req.body.email;
+        const password = req.body.password;
+        const data = await loginUser(email, password);
+        res.json(data);
+    } catch (error:any){
+        res.status(500).json({message: error.message});
+    }
+}

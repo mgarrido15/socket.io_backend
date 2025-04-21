@@ -6,7 +6,8 @@ import {
     getAllUsersHandler,
     getUserByIdHandler,
     updateUserHandler,
-    deleteUserHandler
+    deleteUserHandler,
+    login
 } from '../users/user_controller.js';
 
 const router = express.Router();
@@ -86,6 +87,8 @@ router.post('/users', createUserHandler);
  *                     type: string
  */
 router.get('/users', getAllUsersHandler);
+
+router.post('/login', login);
 
 /**
  * @openapi

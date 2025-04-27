@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema({
 });
 
 export interface IUser{
+    _id?: string;
     name : string;
     age : number;
     email : string;

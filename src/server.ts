@@ -11,6 +11,7 @@ import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
 import http from 'http';
 import { Server } from 'socket.io';
+import { verifyAccessToken } from './modules/auth/jwt.js';
 //const cors =require("cors");
 
 
@@ -71,8 +72,44 @@ const io = new Server(httpServer, {
     },
 });
 
+// io.use((socket, next) => {
+//     const token = socket.handshake.auth.token;
+//     if (!token) return next(new Error("No token sent"));
+
+//     try {
+//         const payload = verifyAccessToken(token);
+//         console.debug("valid access token");
+//         return next();
+//     } catch (err) {
+//         console.debug("invalid access token");
+//         socket.send("status", {status: "unauthenticated"});
+//         return next(new Error("Invalid token"));
+//     }
+// });
+
 io.on('connection', (socket) => {
     console.log('Usuario conectado:', socket.id);
+
+    // verify the JWT on every message to make sure it hasn't expired
+    socket.use(([event, ...args], next) => {
+        const token = socket.handshake.auth.token;
+        if (!token) return next(new Error("unauthorized"));
+
+        try {
+            verifyAccessToken(token);
+            return next();
+        } catch (err) {
+            return next(new Error("unauthorized"));
+        }
+    });
+
+    socket.on('error', (err) => {
+        if (err && err.message == "unauthorized") {
+            console.debug("unauthorized user")
+            socket.emit("status", { status: "unauthorized"});
+            socket.disconnect();
+        }
+    })
 
     // Escucha mensajes del cliente
     socket.on('send message', (data) => {
@@ -100,9 +137,6 @@ app.use('/api', subjectRoutes);
 // Rutes de prova
 app.get('/', (req, res) => {
     res.send('Welcome to my API');
-    httpServer.listen(LOCAL_PORT, () => {
-    console.log('Server by socket.io: ' + LOCAL_PORT);
-    });
 });
 
 // Conexión a MongoDB

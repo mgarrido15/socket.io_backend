@@ -60,57 +60,7 @@ app.use(express.json());
 app.use(loggingHandler);
 app.use(corsHandler);
 
-// -------------------- SERVIDOR SOCKET.IO PRINCIPAL --------------------
-const SOCKET_PORT = process.env.SOCKET_PORT || 9001;
-
 const httpServer = http.createServer(app);
-const mainIO = new Server(httpServer, {
-    cors: {
-        origin: 'http://localhost:8081',
-        methods: ['GET', 'POST']
-    }
-});
-
-mainIO.on('connection', (socket) => {
-    console.log('Usuario conectado al servidor principal:', socket.id);
-
-    // Verificación JWT para el socket principal
-    socket.use(([event, ...args], next) => {
-        const token = socket.handshake.auth.token;
-        if (!token) return next(new Error('unauthorized'));
-
-        try {
-            verifyAccessToken(token);
-            return next();
-        } catch (err) {
-            return next(new Error('unauthorized'));
-        }
-    });
-
-    socket.on('error', (err) => {
-        if (err && err.message == 'unauthorized') {
-            console.debug('unauthorized user');
-            socket.emit('status', { status: 'unauthorized' });
-            socket.disconnect();
-        }
-    });
-
-    // Escucha mensajes del cliente
-    socket.on('send message', (data) => {
-        console.log('Mensaje recibido del cliente:', data);
-        // Reenvía el mensaje a todos los clientes conectados
-        mainIO.emit('receive message', data);
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Usuario desconectado del servidor principal:', socket.id);
-    });
-});
-
-// Inicia el servidor Socket.IO principal
-httpServer.listen(SOCKET_PORT, () => {
-    console.log(`Socket.IO principal escuchando en http://localhost:${SOCKET_PORT}`);
-});
 
 // -------------------- SERVIDOR DE CHAT SOCKET.IO --------------------
 // Interfaz para tipado de mensajes del chat
@@ -139,6 +89,27 @@ const chatIO = new Server(chatServer, {
 // Manejar conexiones de Socket.IO para el chat
 chatIO.on('connection', (socket) => {
     console.log(`Usuario conectado al chat: ${socket.id}`);
+
+    // Verificación JWT para el socket principal
+    socket.use(([event, ...args], next) => {
+        const token = socket.handshake.auth.token;
+        if (!token) return next(new Error('unauthorized'));
+
+        try {
+            verifyAccessToken(token);
+            return next();
+        } catch (err) {
+            return next(new Error('unauthorized'));
+        }
+    });
+
+    socket.on('error', (err) => {
+        if (err && err.message == 'unauthorized') {
+            console.debug('unauthorized user');
+            socket.emit('status', { status: 'unauthorized' });
+            socket.disconnect();
+        }
+    });
 
     // Manejar evento para unirse a una sala
     socket.on('join_room', (roomId: string) => {

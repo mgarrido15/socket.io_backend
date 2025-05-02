@@ -1,9 +1,9 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import userRoutes from './modules/users/user_routes.js'; // Nota el .js al final
-import forumRoutes from './modules/forum/forum_routes.js'; // Nota el .js al final
-import subjectRoutes from './modules/subject/subject_routes.js'; // Nota el .js al final
+import userRoutes from './modules/users/user_routes.js';
+import forumRoutes from './modules/forum/forum_routes.js';
+import subjectRoutes from './modules/subject/subject_routes.js';
 import { corsHandler } from './middleware/corsHandler.js';
 import { loggingHandler } from './middleware/loggingHandler.js';
 import { routeNotFound } from './middleware/routeNotFound.js';
@@ -12,8 +12,6 @@ import swaggerJSDoc from 'swagger-jsdoc';
 import http from 'http';
 import { Server } from 'socket.io';
 import { verifyAccessToken } from './modules/auth/jwt.js';
-//const cors =require("cors");
-
 
 dotenv.config(); // Cargamos las variables de entorno desde el archivo .env
 
@@ -32,18 +30,18 @@ const swaggerOptions = {
         },
         tags: [
             {
-              name: 'Users',
-              description: 'Rutas relacionadas con la gestión de usuarios',
+                name: 'Users',
+                description: 'Rutas relacionadas con la gestión de usuarios'
             },
             {
-              name: 'Forum',
-              description: 'Rutas relacionadas con el forum',
+                name: 'Forum',
+                description: 'Rutas relacionadas con el forum'
             },
             {
-              name: 'Main',
-              description: 'Rutas principales de la API',
+                name: 'Main',
+                description: 'Rutas principales de la API'
             }
-          ],
+        ],
         servers: [
             {
                 url: `http://localhost:${LOCAL_PORT}`
@@ -61,93 +59,129 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(express.json());
 app.use(loggingHandler);
 app.use(corsHandler);
-// Initialize Socket.IO with the HTTP server
+
+// -------------------- SERVIDOR SOCKET.IO PRINCIPAL --------------------
 const SOCKET_PORT = process.env.SOCKET_PORT || 9001;
 
 const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
+const mainIO = new Server(httpServer, {
     cors: {
-        origin: "http://localhost:8081", // Permitir solicitudes desde este origen
-        methods: ["GET", "POST"], // Métodos permitidos
-    },
+        origin: 'http://localhost:8081',
+        methods: ['GET', 'POST']
+    }
 });
 
-// io.use((socket, next) => {
-//     const token = socket.handshake.auth.token;
-//     if (!token) return next(new Error("No token sent"));
+mainIO.on('connection', (socket) => {
+    console.log('Usuario conectado al servidor principal:', socket.id);
 
-//     try {
-//         const payload = verifyAccessToken(token);
-//         console.debug("valid access token");
-//         return next();
-//     } catch (err) {
-//         console.debug("invalid access token");
-//         socket.send("status", {status: "unauthenticated"});
-//         return next(new Error("Invalid token"));
-//     }
-// });
-
-io.on('connection', (socket) => {
-    console.log('Usuario conectado:', socket.id);
-
-    // verify the JWT on every message to make sure it hasn't expired
+    // Verificación JWT para el socket principal
     socket.use(([event, ...args], next) => {
         const token = socket.handshake.auth.token;
-        if (!token) return next(new Error("unauthorized"));
+        if (!token) return next(new Error('unauthorized'));
 
         try {
             verifyAccessToken(token);
             return next();
         } catch (err) {
-            return next(new Error("unauthorized"));
+            return next(new Error('unauthorized'));
         }
     });
 
     socket.on('error', (err) => {
-        if (err && err.message == "unauthorized") {
-            console.debug("unauthorized user")
-            socket.emit("status", { status: "unauthorized"});
+        if (err && err.message == 'unauthorized') {
+            console.debug('unauthorized user');
+            socket.emit('status', { status: 'unauthorized' });
             socket.disconnect();
         }
-    })
+    });
 
     // Escucha mensajes del cliente
     socket.on('send message', (data) => {
         console.log('Mensaje recibido del cliente:', data);
-
         // Reenvía el mensaje a todos los clientes conectados
-        io.emit('receive message', data);
+        mainIO.emit('receive message', data);
     });
 
     socket.on('disconnect', () => {
-        console.log('Usuario desconectado:', socket.id);
+        console.log('Usuario desconectado del servidor principal:', socket.id);
     });
 });
 
-// Inicia el servidor de Socket.IO
+// Inicia el servidor Socket.IO principal
 httpServer.listen(SOCKET_PORT, () => {
-    console.log(`Socket.IO escuchando en http://localhost:${SOCKET_PORT}`);
+    console.log(`Socket.IO principal escuchando en http://localhost:${SOCKET_PORT}`);
 });
 
-//rutas
+// -------------------- SERVIDOR DE CHAT SOCKET.IO --------------------
+// Interfaz para tipado de mensajes del chat
+interface ChatMessage {
+    room: string;
+    author: string;
+    message: string;
+    time: string;
+}
+
+// Puerto específico para el servidor de chat
+const CHAT_PORT = process.env.CHAT_PORT || 3001;
+
+// Crear servidor HTTP para el chat
+const chatServer = http.createServer();
+
+// Configurar Socket.IO para el chat con CORS
+const chatIO = new Server(chatServer, {
+    cors: {
+        origin: '*', // Permitir cualquier origen (ajustar en producción)
+        methods: ['GET', 'POST'],
+        credentials: true
+    }
+});
+
+// Manejar conexiones de Socket.IO para el chat
+chatIO.on('connection', (socket) => {
+    console.log(`Usuario conectado al chat: ${socket.id}`);
+
+    // Manejar evento para unirse a una sala
+    socket.on('join_room', (roomId: string) => {
+        socket.join(roomId);
+        console.log(`Usuario con ID: ${socket.id} se unió a la sala: ${roomId}`);
+    });
+
+    // Manejar evento para enviar un mensaje
+    socket.on('send_message', (data: ChatMessage) => {
+        // Enviar el mensaje solo a los clientes en la misma sala
+        socket.to(data.room).emit('receive_message', data);
+        console.log(`Mensaje enviado en sala ${data.room} por ${data.author}: ${data.message}`);
+    });
+
+    // Manejar desconexión
+    socket.on('disconnect', () => {
+        console.log(`Usuario desconectado del chat: ${socket.id}`);
+    });
+});
+
+// Iniciar el servidor de chat
+chatServer.listen(CHAT_PORT, () => {
+    console.log(`Servidor de chat escuchando en http://localhost:${CHAT_PORT}`);
+});
+
+// -------------------- RUTAS API Y SERVIDOR EXPRESS --------------------
 app.use('/api', userRoutes);
 app.use('/api', forumRoutes);
 app.use('/api', subjectRoutes);
 
-// Rutes de prova
+// Rutas de prueba
 app.get('/', (req, res) => {
     res.send('Welcome to my API');
 });
 
 // Conexión a MongoDB
-//mongoose;
 mongoose
     .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seminarioExpress')
     .then(() => console.log('Connected to DB'))
     .catch((error) => console.error('DB Connection Error:', error));
 
-// Iniciar el servidor
+// Iniciar el servidor Express
 app.listen(LOCAL_PORT, () => {
     console.log('Server listening on port: ' + LOCAL_PORT);
-    console.log(`Swagger disponible a http://localhost:${LOCAL_PORT}/api-docs`);
+    console.log(`Swagger disponible en http://localhost:${LOCAL_PORT}/api-docs`);
 });

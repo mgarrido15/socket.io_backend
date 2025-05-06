@@ -55,6 +55,8 @@ router.get('/main', saveMethodHandler);
  *                 type: integer
  *               email:
  *                 type: string
+ *               password:
+ *                 type: string
  *     responses:
  *       201:
  *         description: Usuario creado exitosamente
